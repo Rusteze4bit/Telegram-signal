@@ -5,11 +5,6 @@ import websocket
 import threading
 from datetime import datetime, timedelta
 import statistics
-import csv
-
-# ================= CONFIG =================
-MODE = "LIVE"  # "LIVE" or "BACKTEST"
-CSV_FILE = "ticks.csv"  # for backtesting
 
 # Telegram bot credentials
 TOKEN = "8256982239:AAFZLRbcmRVgO1SiWOBqU7Hf00z6VU6nB64"
@@ -39,7 +34,6 @@ active_messages = []
 last_expired_id = None
 
 
-# ============ TELEGRAM FUNCTIONS ============
 def send_telegram_message(message: str, image_path="logo.png", keep=False):
     """Send a message with logo and Run button."""
     keyboard = {
@@ -90,7 +84,6 @@ def delete_last_expired():
         last_expired_id = None
 
 
-# ============ ADVANCED ANALYSIS ============
 def analyze_market(market: str, ticks: list):
     """
     Advanced adaptive analysis:
@@ -109,10 +102,10 @@ def analyze_market(market: str, ticks: list):
     base_window = 50
     vol = statistics.pstdev(last_digits[-50:]) or 1
     window = int(base_window * (1 + vol / 10))
-    window = min(window, len(last_digits))
+    window = min(window, len(last_digits))  # cap window
     digits = last_digits[-window:]
 
-    # --- Ratios ---
+    # --- Basic ratios ---
     under6_ratio = sum(d < 6 for d in digits) / len(digits)
     under8_ratio = sum(d < 8 for d in digits) / len(digits)
 
@@ -131,7 +124,7 @@ def analyze_market(market: str, ticks: list):
     trans_under6 /= max(1, len(digits) - 1)
     trans_under8 /= max(1, len(digits) - 1)
 
-    # --- Weighted scoring ---
+    # --- Weighted scoring system ---
     score_under6 = (
         under6_ratio * 0.4 +
         streak_under6 * 0.3 +
@@ -154,19 +147,20 @@ def analyze_market(market: str, ticks: list):
     best_signal = max(strength, key=strength.get)
     confidence = strength[best_signal]
 
-    # --- Confidence filter ---
+    # --- Adaptive confidence threshold ---
     if confidence < 0.55:
-        return None
+        return None  # skip weak signals
 
     return best_signal, confidence
 
 
-# ============ LIVE SIGNAL SCHEDULER ============
 def fetch_and_analyze():
     """Pick the best market and send full signal cycle."""
     global last_expired_id
 
+    # delete old expired before new cycle
     delete_last_expired()
+
     best_market, best_signal, best_confidence = None, None, 0
 
     for market in MARKETS:
@@ -179,46 +173,43 @@ def fetch_and_analyze():
                     best_signal = signal
                     best_market = market
 
-    if best_market:
+    if best_market and best_signal:
         now = datetime.now()
-        entry_time = now + timedelta(minutes=1)
-        expiry_time = now + timedelta(minutes=4)
         next_signal_time = now + timedelta(minutes=1)
-
         market_name = MARKET_NAMES.get(best_market, best_market)
-
-        # -------- PRE-NOTIFICATION --------
-        pre_msg = (
-             f"📢 <b>Upcoming Signal Alert</b>\n\n"
-             f"⏰ Entry at <b>{entry_time.strftime('%H:%M:%S')}</b>\n\n"
-             f"⚡ Get ready!"
-        )
-        send_telegram_message(pre_msg)
-        time.sleep(30)
 
         # -------- MAIN SIGNAL --------
         entry_digit = int(str(market_ticks[best_market][-1])[-1]) if market_ticks[best_market] else None
+
+        strategy_note = (
+            "\n\n🤖 Strategy Focus: <b>Digit Under 6</b>"
+            if best_signal == "Under 6"
+            else "\n\n🤖 Strategy Focus: <b>Digit Under 8</b>"
+        )
+
         main_msg = (
             f"⚡ <b>KashyTrader Premium Signal</b>\n\n"
             f"⏰ Time: {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"📊 Market: {market_name}\n"
             f"🎯 Signal: <b>{best_signal}</b>\n"
-            f"🔢 Entry Digit: <b>{entry_digit}</b>\n"
+            f"🔢 Entry Point Digit: <b>{entry_digit}</b>\n"
             f"📈 Confidence: <b>{best_confidence:.2%}</b>\n"
             f"🔥 Execute now!"
+            f"{strategy_note}"
         )
         send_telegram_message(main_msg)
-        time.sleep(120)
+        time.sleep(120)  # 2 mins duration
 
         # -------- POST-NOTIFICATION --------
         post_msg = (
             f"✅ <b>Signal Expired</b>\n\n"
             f"📊 Market: {market_name}\n"
-            f"🕒 Expired at: {expiry_time.strftime('%H:%M:%S')}\n\n"
+            f"🕒 Expired at: {now.strftime('%H:%M:%S')}\n\n"
             f"🔔 Next Signal Expected: {next_signal_time.strftime('%H:%M:%S')}"
         )
         last_expired_id = send_telegram_message(post_msg, keep=True)
 
+        # -------- CLEANUP OLD MESSAGES --------
         time.sleep(30)
         delete_messages()
 
@@ -226,9 +217,11 @@ def fetch_and_analyze():
 def on_message(ws, message):
     """Handle incoming tick data."""
     data = json.loads(message)
+
     if "tick" in data:
         symbol = data["tick"]["symbol"]
         quote = data["tick"]["quote"]
+
         market_ticks[symbol].append(quote)
         if len(market_ticks[symbol]) > 200:
             market_ticks[symbol].pop(0)
@@ -251,54 +244,10 @@ def run_websocket():
 def schedule_signals():
     while True:
         fetch_and_analyze()
-        time.sleep(600)
+        time.sleep(600)  # every 10 min
 
 
-# ============ BACKTESTING TOOL ============
-def backtest_analysis(csv_file, market="R_100"):
-    """
-    Run the analysis on historical tick data from a CSV.
-    CSV format: timestamp, price
-    """
-    ticks = []
-    with open(csv_file, "r") as f:
-        reader = csv.reader(f)
-        next(reader, None)
-        for row in reader:
-            try:
-                ticks.append(float(row[1]))
-            except (IndexError, ValueError):
-                continue
-
-    if len(ticks) < 100:
-        print("⚠️ Not enough data for backtest")
-        return
-
-    correct, total = 0, 0
-    for i in range(100, len(ticks), 10):
-        history = ticks[:i]
-        result = analyze_market(market, history)
-        if result:
-            signal, confidence = result
-            next_digit = int(str(int(ticks[i]))[-1])
-            if signal == "Under 6" and next_digit < 6:
-                correct += 1
-            elif signal == "Under 8" and next_digit < 8:
-                correct += 1
-            total += 1
-
-    accuracy = (correct / total) * 100 if total > 0 else 0
-    print(f"📊 Backtest Results for {market}")
-    print(f"Signals Generated: {total}")
-    print(f"Correct Predictions: {correct}")
-    print(f"Accuracy: {accuracy:.2f}%")
-
-
-# ============ MAIN ENTRY ============
 if __name__ == "__main__":
-    if MODE == "LIVE":
-        ws_thread = threading.Thread(target=run_websocket)
-        ws_thread.start()
-        schedule_signals()
-    elif MODE == "BACKTEST":
-        backtest_analysis(CSV_FILE, market="R_100")
+    ws_thread = threading.Thread(target=run_websocket)
+    ws_thread.start()
+    schedule_signals()

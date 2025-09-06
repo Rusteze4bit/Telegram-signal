@@ -86,70 +86,38 @@ def delete_last_expired():
 
 def analyze_market(market: str, ticks: list):
     """
-    Advanced adaptive analysis:
-      - Dynamic window size (depends on volatility)
-      - Ratio & streak analysis
-      - Transition probability modeling
-      - Adaptive confidence thresholds
-      - Supports Under 6 and Under 8
+    Advanced analysis:
+      - Under 6 distribution (with streak + volatility filter)
+      - Under 8 complex analysis (weighted ratio + streak + inverse volatility)
     """
-    if len(ticks) < 50:
+    if len(ticks) < 30:
         return None
 
     last_digits = [int(str(t)[-1]) for t in ticks]
 
-    # --- Dynamic window size ---
-    base_window = 50
-    vol = statistics.pstdev(last_digits[-50:]) or 1
-    window = int(base_window * (1 + vol / 10))
-    window = min(window, len(last_digits))  # cap window
-    digits = last_digits[-window:]
+    under6_count = sum(d < 6 for d in last_digits)
+    under8_count = sum(d < 8 for d in last_digits)
 
-    # --- Basic ratios ---
-    under6_ratio = sum(d < 6 for d in digits) / len(digits)
-    under8_ratio = sum(d < 8 for d in digits) / len(digits)
+    # streak detection
+    last5 = last_digits[-5:]
+    streak_under6 = sum(d < 6 for d in last5) / 5
+    streak_under8 = sum(d < 8 for d in last5) / 5
 
-    # --- Streak detection (last 10 digits) ---
-    last10 = digits[-10:]
-    streak_under6 = sum(d < 6 for d in last10) / 10
-    streak_under8 = sum(d < 8 for d in last10) / 10
+    # volatility filter (stddev of last 20 digits)
+    vol = statistics.pstdev(last_digits[-20:]) or 1  # avoid div/0
 
-    # --- Transition probabilities ---
-    trans_under6, trans_under8 = 0, 0
-    for i in range(len(digits) - 1):
-        if digits[i] < 6 and digits[i+1] < 6:
-            trans_under6 += 1
-        if digits[i] < 8 and digits[i+1] < 8:
-            trans_under8 += 1
-    trans_under6 /= max(1, len(digits) - 1)
-    trans_under8 /= max(1, len(digits) - 1)
-
-    # --- Weighted scoring system ---
-    score_under6 = (
-        under6_ratio * 0.4 +
-        streak_under6 * 0.3 +
-        trans_under6 * 0.2 +
-        (1 / vol) * 0.1
-    )
-
-    score_under8 = (
-        under8_ratio * 0.4 +
-        streak_under8 * 0.3 +
-        trans_under8 * 0.2 +
-        (1 / vol) * 0.1
-    )
-
+    # weights for signals
     strength = {
-        "Under 6": score_under6,
-        "Under 8": score_under8
+        "Under 6": (under6_count / len(last_digits) + streak_under6 * 0.4) / (1 + vol / 10),
+        "Under 8": (
+            (under8_count / len(last_digits)) * 0.5 +
+            streak_under8 * 0.3 +
+            (1 / vol) * 0.2
+        )
     }
 
     best_signal = max(strength, key=strength.get)
     confidence = strength[best_signal]
-
-    # --- Adaptive confidence threshold ---
-    if confidence < 0.55:
-        return None  # skip weak signals
 
     return best_signal, confidence
 
@@ -164,7 +132,7 @@ def fetch_and_analyze():
     best_market, best_signal, best_confidence = None, None, 0
 
     for market in MARKETS:
-        if len(market_ticks[market]) > 50:
+        if len(market_ticks[market]) > 20:
             result = analyze_market(market, market_ticks[market])
             if result:
                 signal, confidence = result
@@ -173,9 +141,12 @@ def fetch_and_analyze():
                     best_signal = signal
                     best_market = market
 
-    if best_market and best_signal:
+    if best_market:
         now = datetime.now()
+        entry_time = now + timedelta(minutes=1)
+        expiry_time = now + timedelta(minutes=4)
         next_signal_time = now + timedelta(minutes=1)
+
         market_name = MARKET_NAMES.get(best_market, best_market)
 
         # -------- MAIN SIGNAL --------
@@ -198,7 +169,7 @@ def fetch_and_analyze():
             f"{strategy_note}"
         )
         send_telegram_message(main_msg)
-        time.sleep(60)  # 2 mins duration
+        time.sleep(120)  # 2 mins duration
 
         # -------- POST-NOTIFICATION --------
         post_msg = (
@@ -210,7 +181,7 @@ def fetch_and_analyze():
         last_expired_id = send_telegram_message(post_msg, keep=True)
 
         # -------- CLEANUP OLD MESSAGES --------
-        time.sleep(15)
+        time.sleep(30)
         delete_messages()
 
 
@@ -244,7 +215,7 @@ def run_websocket():
 def schedule_signals():
     while True:
         fetch_and_analyze()
-        time.sleep(60)  # every 10 min
+        time.sleep(600)  # every 10 min
 
 
 if __name__ == "__main__":

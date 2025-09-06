@@ -1,2 +1,1 @@
-requests
-websocket-client
+# no external dependencies required

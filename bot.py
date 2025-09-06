@@ -14,7 +14,7 @@ CSV_FILE = "ticks.csv"  # for backtesting
 # Telegram bot credentials
 TOKEN = "8256982239:AAFZLRbcmRVgO1SiWOBqU7Hf00z6VU6nB64"
 GROUP_ID = -1002810133474
-BASE_URL = f"https://api.telegram.org/bot{8256982239:AAFZLRbcmRVgO1SiWOBqU7Hf00z6VU6nB64}"
+BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 # Deriv API WebSocket endpoint
 DERIV_API_URL = "wss://ws.binaryws.com/websockets/v3?app_id=1089"

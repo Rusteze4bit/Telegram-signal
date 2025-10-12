@@ -188,7 +188,7 @@ def fetch_and_analyze():
         )
 
         main_msg = (
-            f"⚡ <b>KashyTrader Premium Signal</b>\n\n"
+            f"⚡ <b>patelPremium Signal</b>\n\n"
             f"⏰ Time: {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"📊 Market: {market_name}\n"
             f"🎯 Signal: <b>{best_signal}</b>\n"

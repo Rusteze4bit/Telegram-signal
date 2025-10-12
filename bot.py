@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 import statistics
 
 # Telegram bot credentials
-TOKEN = "8256982239:AAFZLRbcmRVgO1SiWOBqU7Hf00z6VU6nB64"
-GROUP_ID = -1002810133474
+TOKEN = "8433419095:AAGY1LUaVbucuIpzObVNOaun5EaG6-1LwFU"
+GROUP_ID = -1002882813831
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
 
 # Deriv API WebSocket endpoint
@@ -38,7 +38,7 @@ def send_telegram_message(message: str, image_path="logo.png", keep=False):
     """Send a message with logo and Run button."""
     keyboard = {
         "inline_keyboard": [[
-            {"text": "🚀 Run on KashyTrader", "url": "https://www.kashytrader.site/"}
+            {"text": "🚀 Run on patel", "url": "https://www.patel.site/"}
         ]]
     }
 
@@ -198,7 +198,7 @@ def fetch_and_analyze():
             f"{strategy_note}"
         )
         send_telegram_message(main_msg)
-        time.sleep(120)  # 2 mins duration
+        time.sleep(12)  # 2 mins duration
 
         # -------- POST-NOTIFICATION --------
         post_msg = (
@@ -210,7 +210,7 @@ def fetch_and_analyze():
         last_expired_id = send_telegram_message(post_msg, keep=True)
 
         # -------- CLEANUP OLD MESSAGES --------
-        time.sleep(30)
+        time.sleep(3)
         delete_messages()
 
 
@@ -244,7 +244,7 @@ def run_websocket():
 def schedule_signals():
     while True:
         fetch_and_analyze()
-        time.sleep(600)  # every 10 min
+        time.sleep(60)  # every 10 min
 
 
 if __name__ == "__main__":
